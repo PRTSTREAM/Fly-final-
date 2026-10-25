@@ -2,8 +2,8 @@ name: Update M3U Playlist Every 2 Hours
 
 on:
   schedule:
-    - cron: '0 */2 * * *'  # Har 2 ghante mein chalega
-  workflow_dispatch:        # Manual trigger ke liye bhi button rahega
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
 
 jobs:
   update:
@@ -19,7 +19,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install requests beautifulsoup4
+          pip install cloudscraper beautifulsoup4 requests
 
       - name: Run Script
         run: |
@@ -30,4 +30,4 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add playlist.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update M3U playlist and links [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update M3U playlist with scraped links [skip ci]" && git push)
