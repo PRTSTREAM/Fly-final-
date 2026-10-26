@@ -1,38 +1,29 @@
 import re
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests  # असली क्रोम ब्राउज़र का फिंगरप्रिंट मिमिक करने के लिए
 
 PLAYLIST_URL = "https://raw.githubusercontent.com/PRTSTREAM/Filmyfy/refs/heads/main/playlist.m3u"
 
-# ब्राउज़र जैसा हेडर
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1"
-}
-
 def bypass_and_extract_link(target_url):
     try:
-        # अगर इनपुट URL ही पहले से pub या pixeldrain direct stream लिंक है तो सीधे लौटाएं
+        # अगर लिंक पहले से डायरेक्ट स्ट्रीम या पब यूआरएल है
         if target_url.startswith("https://pub") or "pixeldrain.dev/api/file/" in target_url:
             return target_url
 
-        session = requests.Session()
-        response = session.get(target_url, headers=HEADERS, timeout=15, allow_redirects=True)
+        print(f"Fetching via Chrome TLS Impersonation: {target_url}")
         
-        print(f"Fetching: {target_url} -> Status Code: {response.status_code}")
+        # curl_cffi से रिक्वेस्ट भेजें जो 403/Cloudflare को बायपास कर देगा
+        response = requests.get(target_url, impersonate="chrome", timeout=20)
+        
+        print(f"Status Code: {response.status_code}")
         
         if response.status_code != 200:
-            print(f"Warning: Site blocked or failed with status {response.status_code}")
+            print(f"Warning: Failed with status {response.status_code}")
             return None
 
         html_text = response.text
 
         # ------------------ Logic 1: Pixeldrain / iwebp Store Extract ------------------
-        # पहले BeautifulSoup से check करें
         soup = BeautifulSoup(html_text, 'html.parser')
         for a in soup.find_all('a', href=True):
             href = a['href']
@@ -42,20 +33,19 @@ def bypass_and_extract_link(target_url):
                     file_id = match.group(1)
                     return f"https://pixeldrain.dev/api/file/{file_id}?download"
 
-        # अगर BeautifulSoup में नहीं मिला, तो Raw HTML में Regex चलाएं
+        # Raw HTML Regex for Pixeldrain
         pixel_match = re.search(r'https?://[^\s\'"]+/u/([a-zA-Z0-9_-]+)', html_text)
         if pixel_match:
             file_id = pixel_match.group(1)
             return f"https://pixeldrain.dev/api/file/{file_id}?download"
 
         # ------------------ Logic 2: Direct https://pub URL Search ------------------
-        # BeautifulSoup <a> href check
         for a in soup.find_all('a', href=True):
             href = a['href']
             if href.startswith('https://pub'):
                 return href
 
-        # पूरे HTML text में से https://pub वाला URL ढूँढें (Regex search)
+        # Raw HTML Regex for pub links
         pub_match = re.search(r'https://pub[^\s\'"<>]+', html_text)
         if pub_match:
             return pub_match.group(0)
@@ -68,11 +58,12 @@ def bypass_and_extract_link(target_url):
 def process_playlist():
     print("Fetching existing playlist...")
     try:
-        response = requests.get(PLAYLIST_URL, headers=HEADERS)
-        if response.status_code != 200:
+        # प्लेलिस्ट डाउनलोड करने के लिए सामान्य रिक्वेस्ट या curl_cffi का उपयोग
+        res = requests.get(PLAYLIST_URL, impersonate="chrome")
+        if res.status_code != 200:
             print("Failed to fetch M3U playlist.")
             return
-        playlist_content = response.text
+        playlist_content = res.text
     except Exception as e:
         print(f"Error fetching playlist: {e}")
         return
@@ -103,7 +94,7 @@ def process_playlist():
     with open("playlist.m3u", "w", encoding="utf-8") as f:
         f.write("\n".join(new_lines) + "\n")
     
-    print("Playlist update process completed!")
+    print("Playlist update process completed successfully!")
 
 if __name__ == "__main__":
     process_playlist()
