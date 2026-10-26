@@ -48,7 +48,7 @@ def process_playlist():
             final_direct_url = None
             raw_html = ""
             
-            # 6-Step Multi-Logic Execution Flow
+            # 6-Step Multi-Logic Execution Flow with Protocol Fallback (Logic 6)
             for attempt in range(3):
                 try:
                     time.sleep(1)
@@ -73,13 +73,13 @@ def process_playlist():
                 # -------------------------------------------------------------
                 # LOGIC 1: Sabse pehle /u/... (Pixeldrain) dhoondo chahe koi bhi domain ho
                 # -------------------------------------------------------------
-                match_pixel = re.search(r'https?://[^\s<>\"']+/u/([a-zA-Z0-9_-]+)', html, re.IGNORECASE)
+                match_pixel = re.search(r"https?://[^\\s<>\"']+/u/([a-zA-Z0-9_-]+)", html, re.IGNORECASE)
                 if match_pixel:
                     file_id = match_pixel.group(1)
                     final_direct_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
                     print(f"-> [Logic 1] Found Pixeldrain via Full URL: {final_direct_url}")
                 else:
-                    match_short_pixel = re.search(r'/u/([a-zA-Z0-9_-]+)', html, re.IGNORECASE)
+                    match_short_pixel = re.search(r"/u/([a-zA-Z0-9_-]+)", html, re.IGNORECASE)
                     if match_short_pixel:
                         file_id = match_short_pixel.group(1)
                         final_direct_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
@@ -99,10 +99,10 @@ def process_playlist():
                                 break
                 
                 # -------------------------------------------------------------
-                # LOGIC 3: Poore HTML mein 'https://pub' se shuru hone wala link dhoondo
+                # LOGIC 3: Poore HTML mein 'https://pub' ya 'pub-' se shuru hone wala link dhoondo
                 # -------------------------------------------------------------
                 if not final_direct_url:
-                    matches_pub = re.findall(r'https?://[^\s<>\"']*pub-[^\s<>\"']+', html, re.IGNORECASE)
+                    matches_pub = re.findall(r"https?://[^\\s<>\"']*pub-[^\\s<>\"']+", html, re.IGNORECASE)
                     for link in matches_pub:
                         if "filesdl.in" not in link and "zdownload" not in link:
                             final_direct_url = link
@@ -124,7 +124,7 @@ def process_playlist():
                 # LOGIC 5: Kisi bhi link mein 'r2.dev' ho toh use utha lo
                 # -------------------------------------------------------------
                 if not final_direct_url:
-                    matches_r2 = re.findall(r'https?://[^\s<>\"']+\.r2\.dev[^\s<>\"']+', html, re.IGNORECASE)
+                    matches_r2 = re.findall(r"https?://[^\\s<>\"']+\\.r2\\.dev[^\\s<>\"']+", html, re.IGNORECASE)
                     for link in matches_r2:
                         if "filesdl.in" not in link and "zdownload" not in link:
                             final_direct_url = link
@@ -132,7 +132,7 @@ def process_playlist():
                             break
             
             # -------------------------------------------------------------
-            # LOGIC 6: Agar upar ke saare 5 tareeqe fail ho jayein, toh channel skip
+            # LOGIC 6: Agar upar ke saare tareeqe fail ho jayein, toh channel skip
             # -------------------------------------------------------------
             if final_direct_url:
                 if 'group-title=' in extinf_line:
@@ -143,7 +143,7 @@ def process_playlist():
                 new_m3u_lines.append(updated_extinf)
                 new_m3u_lines.append(final_direct_url)
             else:
-                print(f"-> [Logic 6] All 5 checks failed. Skipping channel: {page_url}")
+                print(f"-> [Logic 6] All checks failed. Skipping channel: {page_url}")
         
         i += 1
         
