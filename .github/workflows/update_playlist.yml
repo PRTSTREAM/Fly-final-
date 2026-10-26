@@ -2,7 +2,7 @@ name: Update and Ping Playlist
 
 on:
   schedule:
-    - cron: '0 */3 * * *' # हर 3 घंटे में रन होगा
+    - cron: '0 */3 * * *' # हर 3 घंटे में
   workflow_dispatch:
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install requests beautifulsoup4
+          pip install beautifulsoup4 curl-cffi
 
       - name: Run Playlist Parser & Bypass Script
         run: |
