@@ -3,6 +3,7 @@ import re
 import time
 import cloudscraper
 from bs4 import BeautifulSoup
+from urllib.parse import urljoin
 
 INPUT_M3U_URL = "https://raw.githubusercontent.com/PRTSTREAM/Filmyfy/refs/heads/main/playlist.m3u"
 OUTPUT_M3U_FILE = "playlist.m3u"
@@ -47,31 +48,31 @@ def process_playlist():
             print(f"Checking URL: {page_url}")
             final_direct_url = None
             raw_html = ""
+            current_page_url = page_url
             
-            # 6-Step Multi-Logic Execution Flow with Protocol Fallback (Logic 6)
+            # 6-Step + 1 Multi-Logic Execution Flow with Protocol Fallback
             for attempt in range(3):
                 try:
                     time.sleep(1)
-                    page_res = scraper.get(page_url, timeout=30)
+                    page_res = scraper.get(current_page_url, timeout=30)
                     
                     if page_res.text:
                         raw_html = page_res.text
                         break
                 except Exception as e:
-                    # Logic 6: Agar http/https ki problem ya connection fail ho, toh URL scheme switch karke try karo
-                    if attempt == 1 and page_url.startswith("http://"):
-                        page_url = page_url.replace("http://", "https://")
-                    elif attempt == 1 and page_url.startswith("https://"):
-                        page_url = page_url.replace("https://", "http://")
+                    if attempt == 1 and current_page_url.startswith("http://"):
+                        current_page_url = current_page_url.replace("http://", "https://")
+                    elif attempt == 1 and current_page_url.startswith("https://"):
+                        current_page_url = current_page_url.replace("https://", "http://")
                     time.sleep(2)
             
             if raw_html:
-                # Unicode aur slashes ko clean karna taaki parsing clean ho
+                # Unicode aur slashes ko clean karna taaki parsing saaf ho
                 html = raw_html.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\u0026", "&")
                 soup = BeautifulSoup(html, 'html.parser')
                 
                 # -------------------------------------------------------------
-                # LOGIC 1: Sabse pehle /u/... (Pixeldrain) dhoondo chahe koi bhi domain ho
+                # LOGIC 1: Sabse pehle /u/... (Pixeldrain) dhoondo
                 # -------------------------------------------------------------
                 match_pixel = re.search(r"https?://[^\\s<>\"']+/u/([a-zA-Z0-9_-]+)", html, re.IGNORECASE)
                 if match_pixel:
@@ -99,7 +100,7 @@ def process_playlist():
                                 break
                 
                 # -------------------------------------------------------------
-                # LOGIC 3: Poore HTML mein 'https://pub' ya 'pub-' se shuru hone wala link dhoondo
+                # LOGIC 3: Poore HTML mein 'https://pub' ya 'pub-' link dhoondo
                 # -------------------------------------------------------------
                 if not final_direct_url:
                     matches_pub = re.findall(r"https?://[^\\s<>\"']*pub-[^\\s<>\"']+", html, re.IGNORECASE)
@@ -130,9 +131,56 @@ def process_playlist():
                             final_direct_url = link
                             print(f"-> [Logic 5] Found via r2.dev check: {final_direct_url}")
                             break
+                
+                # -------------------------------------------------------------
+                # LOGIC 7: Agar pehle ke saare fail ho jayein, toh GDFLIX / Login To Download / Fast Cloud -> Cloud Resume Download dhoondo
+                # -------------------------------------------------------------
+                if not final_direct_url:
+                    gdflix_url = None
+                    for a_tag in soup.find_all('a', href=True):
+                        text = a_tag.get_text(strip=True).lower()
+                        href = a_tag['href']
+                        if "login to download" in text or "gdflix" in href.lower():
+                            gdflix_url = urljoin(current_page_url, href)
+                            break
+                    
+                    if gdflix_url:
+                        print(f"-> [Logic 7] Visiting GDFLIX page: {gdflix_url}")
+                        try:
+                            time.sleep(1.5)
+                            gd_res = scraper.get(gdflix_url, timeout=30)
+                            if gd_res.text:
+                                gd_html = gd_res.text.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\u0026", "&")
+                                gd_soup = BeautifulSoup(gd_html, 'html.parser')
+                                
+                                # GDFLIX page par "FAST CLOUD / ZIPDISK" button dhoondo
+                                fast_cloud_url = None
+                                for a_tag in gd_soup.find_all('a', href=True):
+                                    text = a_tag.get_text(strip=True).lower()
+                                    if "fast cloud" in text or "zipdisk" in text:
+                                        fast_cloud_url = urljoin(gdflix_url, a_tag['href'])
+                                        break
+                                
+                                if fast_cloud_url:
+                                    print(f"-> [Logic 7] Visiting Fast Cloud/Zipdisk page: {fast_cloud_url}")
+                                    time.sleep(1.5)
+                                    fc_res = scraper.get(fast_cloud_url, timeout=30)
+                                    if fc_res.text:
+                                        fc_html = fc_res.text.replace("\\u003C", "<").replace("\\u003E", ">").replace("\\\"", "\"").replace("\\u0026", "&")
+                                        fc_soup = BeautifulSoup(fc_html, 'html.parser')
+                                        
+                                        # Fast Cloud page par "Cloud Resume Download" button dhoondo
+                                        for a_tag in fc_soup.find_all('a', href=True):
+                                            text = a_tag.get_text(strip=True).lower()
+                                            if "cloud resume download" in text or "resume download" in text:
+                                                final_direct_url = urljoin(fast_cloud_url, a_tag['href'])
+                                                print(f"-> [Logic 7] Successfully grabbed Cloud Resume Download link: {final_direct_url}")
+                                                break
+                        except Exception as ex:
+                            print(f"-> [Logic 7] GDFLIX navigation error: {ex}")
             
             # -------------------------------------------------------------
-            # LOGIC 6: Agar upar ke saare tareeqe fail ho jayein, toh channel skip
+            # FINAL CHECK: Agar 7 steps ke baad bhi link na mile, tabhi skip karo
             # -------------------------------------------------------------
             if final_direct_url:
                 if 'group-title=' in extinf_line:
@@ -143,13 +191,13 @@ def process_playlist():
                 new_m3u_lines.append(updated_extinf)
                 new_m3u_lines.append(final_direct_url)
             else:
-                print(f"-> [Logic 6] All checks failed. Skipping channel: {page_url}")
+                print(f"-> [Skip] All 7 checks failed for: {page_url}")
         
         i += 1
         
     with open(OUTPUT_M3U_FILE, 'w', encoding='utf-8') as f:
         f.write('\n'.join(new_m3u_lines) + '\n')
-    print("Playlist updated successfully with 6-Step Logic!")
+    print("Playlist updated successfully with 7-Step Ultimate Logic!")
 
 if __name__ == "__main__":
     process_playlist()
