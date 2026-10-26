@@ -61,13 +61,16 @@ def process_playlist():
                         final_direct_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
                         print(f"-> Found Pixeldrain (/u/ pattern): {final_direct_url}")
                     else:
-                        # 3. Agar Pixeldrain na mile, toh 'pub' ya koi bhi download/dl link dhoondo taaki miss na ho
-                        match_pub = re.search(r'https?://[^\s<>"]+?(?:pub|download|dl)[^\s<>"]*', html_content)
+                        # 3. Agar Pixeldrain na mile, toh sirf 'pub-' / '.r2.dev' wala link dhoondo (filesdl.in aur zdownload ko strictly ignore karna hai)
+                        match_pub = re.search(r'https?://[^\s<>"]*pub-[^\s<>"]*', html_content)
                         if match_pub:
-                            final_direct_url = match_pub.group(0)
-                            print(f"-> Found Direct/Pub Link: {final_direct_url}")
-                        else:
-                            # BeautifulSoup se a tags check karo
+                            url_candidate = match_pub.group(0)
+                            if "filesdl.in" not in url_candidate and "zdownload" not in url_candidate:
+                                final_direct_url = url_candidate
+                                print(f"-> Found Pub R2 Link: {final_direct_url}")
+                        
+                        # Agar text match mein na mile, toh BeautifulSoup se a tags check karo
+                        if not final_direct_url:
                             soup = BeautifulSoup(html_content, 'html.parser')
                             for a_tag in soup.find_all('a', href=True):
                                 href = a_tag['href']
@@ -78,14 +81,15 @@ def process_playlist():
                                         final_direct_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
                                         print(f"-> Found Pixeldrain in Tag: {final_direct_url}")
                                         break
-                                elif 'pub' in href or 'download' in href or 'dl' in href:
-                                    final_direct_url = href
-                                    print(f"-> Found Link in Tag: {final_direct_url}")
-                                    break
+                                elif 'pub-' in href or '.r2.dev' in href:
+                                    if "filesdl.in" not in href and "zdownload" not in href:
+                                        final_direct_url = href
+                                        print(f"-> Found Pub Link in Tag: {final_direct_url}")
+                                        break
             except Exception as e:
                 print(f"Error opening {page_url}: {e}")
             
-            # Agar valid link mila tabhi add karo aur group-title set karo, warna skip karo
+            # Agar valid Pixeldrain ya Pub R2 link mila tabhi add karo, warna seedha skip karo
             if final_direct_url:
                 if 'group-title=' in extinf_line:
                     updated_extinf = re.sub(r'group-title="[^"]*"', 'group-title="🎞️4k Movies🆕"', extinf_line)
@@ -95,13 +99,13 @@ def process_playlist():
                 new_m3u_lines.append(updated_extinf)
                 new_m3u_lines.append(final_direct_url)
             else:
-                print(f"-> Skipping channel (No valid link found).")
+                print(f"-> Skipping channel (No Pixeldrain or clean Pub link found).")
         
         i += 1
         
     with open(OUTPUT_M3U_FILE, 'w', encoding='utf-8') as f:
         f.write('\n'.join(new_m3u_lines) + '\n')
-    print("Playlist successfully updated with image fix and link matching!")
+    print("Playlist successfully updated with strict Pixeldrain and Pub-only filter!")
 
 if __name__ == "__main__":
     process_playlist()
