@@ -6,24 +6,19 @@ PLAYLIST_URL = "https://raw.githubusercontent.com/PRTSTREAM/Filmyfy/refs/heads/m
 GROUP_TITLE_NAME = "🎬 NEW 4K"
 
 def add_or_update_group_title(extinf_line, group_name):
-    # अगर लाइन #EXTINF से शुरू नहीं होती, तो वैसे ही लौटा दें
     if not extinf_line.startswith("#EXTINF"):
         return extinf_line
         
-    # कॉमा (,) से एट्रीब्यूट्स और चैनल/मूवी के नाम को अलग करें
     if ',' in extinf_line:
         attrs_part, name_part = extinf_line.split(',', 1)
     else:
         attrs_part = extinf_line
         name_part = ""
         
-    # चेक करें कि क्या पहले से group-title मौजूद है
     if 'group-title=' in attrs_part:
-        # अगर है तो उसे नए वाले से बदल दें
         attrs_part = re.sub(r'group-title="[^"]*"', f'group-title="{group_name}"', attrs_part)
         attrs_part = re.sub(r"group-title='[^']*'", f'group-title="{group_name}"', attrs_part)
     else:
-        # अगर नहीं है तो जोड़ दें
         attrs_part = f'{attrs_part} group-title="{group_name}"'
         
     return f"{attrs_part},{name_part}" if name_part else attrs_part
@@ -94,7 +89,6 @@ def process_playlist():
         line = lines[i].strip()
         
         if line.startswith("#EXTINF"):
-            # Group Title जोड़ें या अपडेट करें
             extinf_header = add_or_update_group_title(line, GROUP_TITLE_NAME)
             i += 1
             if i < len(lines):
@@ -110,4 +104,10 @@ def process_playlist():
         i += 1
 
     # Save output
-    with open("playlist.m3u", "w",
+    with open("playlist.m3u", "w", encoding="utf-8") as f:
+        f.write("\n".join(new_lines) + "\n")
+    
+    print("Playlist update process completed with Group Titles!")
+
+if __name__ == "__main__":
+    process_playlist()
