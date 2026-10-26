@@ -52,41 +52,44 @@ def process_playlist():
                 
                 if page_res.text:
                     html_content = page_res.text
-                    soup = BeautifulSoup(html_content, 'html.parser')
                     
-                    # 1. Step 1: Pehle Pixeldrain /u/ pattern dhoondo (Text ya tags me)
-                    pixeldrain_match = re.search(r'/u/([a-zA-Z0-9_-]+)', html_content)
-                    if pixeldrain_match:
-                        file_id = pixeldrain_match.group(1)
+                    # 1. SABSE PEHLE PIXELDRAIN DHUNDO (Chahe koi bhi domain ho, bas /u/ aur ID honi chahiye)
+                    # Jaise /u/aB6YALMK ya /u/8W1jwq5t
+                    match_pixel = re.search(r'/u/([a-zA-Z0-9_-]+)', html_content)
+                    if match_pixel:
+                        file_id = match_pixel.group(1)
                         pixeldrain_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
                     else:
-                        for a_tag in soup.find_all('a', href=True):
-                            href = a_tag['href']
+                        # Agar regex direct na mile toh saare hrefs me check karo
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        for tag in soup.find_all(True, href=True):
+                            href = tag['href']
                             if '/u/' in href:
-                                match_id = re.search(r'/u/([a-zA-Z0-9_-]+)', href)
-                                if match_id:
-                                    file_id = match_id.group(1)
+                                sub_match = re.search(r'/u/([a-zA-Z0-9_-]+)', href)
+                                if sub_match:
+                                    file_id = sub_match.group(1)
                                     pixeldrain_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
                                     break
                     
-                    # 2. Step 2: Agar Pixeldrain nahi mila, tabhi Pub/R2 link dhoondo
+                    # 2. AGAR PIXELDRAIN BILKUL NAHI HAI, TABHI PUB/R2 LINK DHUNDO
                     if not pixeldrain_url:
-                        for a_tag in soup.find_all('a', href=True):
-                            href = a_tag['href']
+                        for tag in soup.find_all(True, href=True):
+                            href = tag['href']
                             if ('pub-' in href or 'r2.dev' in href) and "filesdl.in" not in href and "zdownload" not in href:
                                 pub_url = href
                                 break
                         
+                        # Agar tags me na mile toh general regex se dhoondo
                         if not pub_url:
-                            matches = re.findall(r'https?://[^\s<>"]+', html_content)
-                            for url in matches:
-                                if ('pub-' in url or 'r2.dev' in url) and "filesdl.in" not in url and "zdownload" not in url:
-                                    pub_url = url
+                            all_links = re.findall(r'https?://[^\s<>"]+', html_content)
+                            for link in all_links:
+                                if ('pub-' in link or 'r2.dev' in link) and "filesdl.in" not in link and "zdownload" not in link:
+                                    pub_url = link
                                     break
             except Exception as e:
                 print(f"Error opening {page_url}: {e}")
             
-            # Final Selection: Sabse pehle Pixeldrain, agar nahi hai toh Pub link
+            # Final priority: Pehle Pixeldrain, agar woh nahi toh Pub link
             final_direct_url = pixeldrain_url if pixeldrain_url else pub_url
             
             if final_direct_url:
@@ -109,7 +112,7 @@ def process_playlist():
         
     with open(OUTPUT_M3U_FILE, 'w', encoding='utf-8') as f:
         f.write('\n'.join(new_m3u_lines) + '\n')
-    print("Playlist updated successfully with strict Pixeldrain priority!")
+    print("Playlist updated successfully!")
 
 if __name__ == "__main__":
     process_playlist()
