@@ -1,18 +1,39 @@
 import re
 from bs4 import BeautifulSoup
-from curl_cffi import requests  # असली क्रोम ब्राउज़र का फिंगरप्रिंट मिमिक करने के लिए
+from curl_cffi import requests  # Cloudflare / 403 Bypass के लिए
 
 PLAYLIST_URL = "https://raw.githubusercontent.com/PRTSTREAM/Filmyfy/refs/heads/main/playlist.m3u"
+GROUP_TITLE_NAME = "🎬 NEW 4K"
+
+def add_or_update_group_title(extinf_line, group_name):
+    # अगर लाइन #EXTINF से शुरू नहीं होती, तो वैसे ही लौटा दें
+    if not extinf_line.startswith("#EXTINF"):
+        return extinf_line
+        
+    # कॉमा (,) से एट्रीब्यूट्स और चैनल/मूवी के नाम को अलग करें
+    if ',' in extinf_line:
+        attrs_part, name_part = extinf_line.split(',', 1)
+    else:
+        attrs_part = extinf_line
+        name_part = ""
+        
+    # चेक करें कि क्या पहले से group-title मौजूद है
+    if 'group-title=' in attrs_part:
+        # अगर है तो उसे नए वाले से बदल दें
+        attrs_part = re.sub(r'group-title="[^"]*"', f'group-title="{group_name}"', attrs_part)
+        attrs_part = re.sub(r"group-title='[^']*'", f'group-title="{group_name}"', attrs_part)
+    else:
+        # अगर नहीं है तो जोड़ दें
+        attrs_part = f'{attrs_part} group-title="{group_name}"'
+        
+    return f"{attrs_part},{name_part}" if name_part else attrs_part
 
 def bypass_and_extract_link(target_url):
     try:
-        # अगर लिंक पहले से डायरेक्ट स्ट्रीम या पब यूआरएल है
         if target_url.startswith("https://pub") or "pixeldrain.dev/api/file/" in target_url:
             return target_url
 
         print(f"Fetching via Chrome TLS Impersonation: {target_url}")
-        
-        # curl_cffi से रिक्वेस्ट भेजें जो 403/Cloudflare को बायपास कर देगा
         response = requests.get(target_url, impersonate="chrome", timeout=20)
         
         print(f"Status Code: {response.status_code}")
@@ -33,7 +54,6 @@ def bypass_and_extract_link(target_url):
                     file_id = match.group(1)
                     return f"https://pixeldrain.dev/api/file/{file_id}?download"
 
-        # Raw HTML Regex for Pixeldrain
         pixel_match = re.search(r'https?://[^\s\'"]+/u/([a-zA-Z0-9_-]+)', html_text)
         if pixel_match:
             file_id = pixel_match.group(1)
@@ -45,7 +65,6 @@ def bypass_and_extract_link(target_url):
             if href.startswith('https://pub'):
                 return href
 
-        # Raw HTML Regex for pub links
         pub_match = re.search(r'https://pub[^\s\'"<>]+', html_text)
         if pub_match:
             return pub_match.group(0)
@@ -58,7 +77,6 @@ def bypass_and_extract_link(target_url):
 def process_playlist():
     print("Fetching existing playlist...")
     try:
-        # प्लेलिस्ट डाउनलोड करने के लिए सामान्य रिक्वेस्ट या curl_cffi का उपयोग
         res = requests.get(PLAYLIST_URL, impersonate="chrome")
         if res.status_code != 200:
             print("Failed to fetch M3U playlist.")
@@ -76,7 +94,8 @@ def process_playlist():
         line = lines[i].strip()
         
         if line.startswith("#EXTINF"):
-            extinf_header = line
+            # Group Title जोड़ें या अपडेट करें
+            extinf_header = add_or_update_group_title(line, GROUP_TITLE_NAME)
             i += 1
             if i < len(lines):
                 target_url = lines[i].strip()
@@ -91,10 +110,4 @@ def process_playlist():
         i += 1
 
     # Save output
-    with open("playlist.m3u", "w", encoding="utf-8") as f:
-        f.write("\n".join(new_lines) + "\n")
-    
-    print("Playlist update process completed successfully!")
-
-if __name__ == "__main__":
-    process_playlist()
+    with open("playlist.m3u", "w",
