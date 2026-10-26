@@ -1,33 +1,33 @@
-name: Update M3U Playlist Every 2 Hours
+name: Update and Ping Playlist
 
 on:
   schedule:
-    - cron: '0 */2 * * *'
+    - cron: '0 */3 * * *' # हर 3 घंटे में रन होगा
   workflow_dispatch:
 
 jobs:
-  update:
+  update-playlist:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
       - name: Install Dependencies
         run: |
-          pip install cloudscraper beautifulsoup4 requests
+          pip install requests beautifulsoup4
 
-      - name: Run Script
+      - name: Run Playlist Parser & Bypass Script
         run: |
           python update_playlist.py
 
       - name: Commit and Push Changes
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add playlist.m3u
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update M3U playlist with scraped links [skip ci]" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update playlist links [skip ci]" && git push)
