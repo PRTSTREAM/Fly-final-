@@ -1,7 +1,7 @@
 import os
 import re
+import time
 import cloudscraper
-from bs4 import BeautifulSoup
 
 INPUT_M3U_URL = "https://raw.githubusercontent.com/PRTSTREAM/Filmyfy/refs/heads/main/playlist.m3u"
 OUTPUT_M3U_FILE = "playlist.m3u"
@@ -32,7 +32,7 @@ def process_playlist():
         if line.startswith("#EXTINF:"):
             extinf_line = line
             
-            # 1. Image URL replacement (60-65-2x -> 280-380-3x)
+            # Image resolution fix (60-65-2x -> 280-380-3x)
             if "60-65-2x" in extinf_line:
                 extinf_line = extinf_line.replace("60-65-2x", "280-380-3x")
             
@@ -44,60 +44,41 @@ def process_playlist():
                 continue
             
             print(f"Checking URL: {page_url}")
-            pixeldrain_url = None
-            pub_url = None
+            final_direct_url = None
             
-            try:
-                page_res = scraper.get(page_url, timeout=20)
-                
-                if page_res.text:
-                    html_content = page_res.text
+            # Retry mechanism taaki server block ya timeout na kare
+            for attempt in range(3):
+                try:
+                    time.sleep(1)
+                    page_res = scraper.get(page_url, timeout=30)
                     
-                    # 1. SABSE PEHLE PIXELDRAIN DHUNDO (Chahe koi bhi domain ho, bas /u/ aur ID honi chahiye)
-                    # Jaise /u/aB6YALMK ya /u/8W1jwq5t
-                    match_pixel = re.search(r'/u/([a-zA-Z0-9_-]+)', html_content)
-                    if match_pixel:
-                        file_id = match_pixel.group(1)
-                        pixeldrain_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
-                    else:
-                        # Agar regex direct na mile toh saare hrefs me check karo
-                        soup = BeautifulSoup(html_content, 'html.parser')
-                        for tag in soup.find_all(True, href=True):
-                            href = tag['href']
-                            if '/u/' in href:
-                                sub_match = re.search(r'/u/([a-zA-Z0-9_-]+)', href)
-                                if sub_match:
-                                    file_id = sub_match.group(1)
-                                    pixeldrain_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
-                                    break
-                    
-                    # 2. AGAR PIXELDRAIN BILKUL NAHI HAI, TABHI PUB/R2 LINK DHUNDO
-                    if not pixeldrain_url:
-                        for tag in soup.find_all(True, href=True):
-                            href = tag['href']
-                            if ('pub-' in href or 'r2.dev' in href) and "filesdl.in" not in href and "zdownload" not in href:
-                                pub_url = href
+                    if page_res.text:
+                        html_content = page_res.text
+                        
+                        # 1. Poore HTML source code me sabse pehle Pixeldrain /u/ pattern dhoondo
+                        match_pixel = re.search(r'/u/([a-zA-Z0-9_-]+)', html_content)
+                        if match_pixel:
+                            file_id = match_pixel.group(1)
+                            final_direct_url = f"https://pixeldrain.dev/api/file/{file_id}?download"
+                            print(f"-> Found Pixeldrain in HTML source: {final_direct_url}")
+                            break
+                        
+                        # 2. Agar Pixeldrain nahi mila, tabhi poore HTML source code me Pub/R2 link dhoondo
+                        all_links = re.findall(r'https?://[^\s<>"]+', html_content)
+                        for link in all_links:
+                            if ('pub-' in link or 'r2.dev' in link) and "filesdl.in" not in link and "zdownload" not in link:
+                                final_direct_url = link
+                                print(f"-> Found Pub Link in HTML source: {final_direct_url}")
                                 break
                         
-                        # Agar tags me na mile toh general regex se dhoondo
-                        if not pub_url:
-                            all_links = re.findall(r'https?://[^\s<>"]+', html_content)
-                            for link in all_links:
-                                if ('pub-' in link or 'r2.dev' in link) and "filesdl.in" not in link and "zdownload" not in link:
-                                    pub_url = link
-                                    break
-            except Exception as e:
-                print(f"Error opening {page_url}: {e}")
+                        if final_direct_url:
+                            break
+                except Exception as e:
+                    print(f"Attempt {attempt+1} error for {page_url}: {e}")
+                    time.sleep(2)
             
-            # Final priority: Pehle Pixeldrain, agar woh nahi toh Pub link
-            final_direct_url = pixeldrain_url if pixeldrain_url else pub_url
-            
+            # Agar dono me se kuch bhi mil gaya toh add karo, warna skip karo
             if final_direct_url:
-                if pixeldrain_url:
-                    print(f"-> Selected Pixeldrain: {final_direct_url}")
-                else:
-                    print(f"-> Selected Pub/R2 Link: {final_direct_url}")
-                
                 if 'group-title=' in extinf_line:
                     updated_extinf = re.sub(r'group-title="[^"]*"', 'group-title="🎞️4k Movies🆕"', extinf_line)
                 else:
@@ -106,7 +87,7 @@ def process_playlist():
                 new_m3u_lines.append(updated_extinf)
                 new_m3u_lines.append(final_direct_url)
             else:
-                print(f"-> Skipping channel (Neither Pixeldrain nor Pub link found).")
+                print(f"-> Skipping channel (Neither Pixeldrain nor Pub found in HTML source).")
         
         i += 1
         
